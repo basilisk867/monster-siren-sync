@@ -1,5 +1,7 @@
 # 塞壬唱片同步器 · Monster Siren Sync
 
+> **📥 [下载单文件 exe（Windows）](https://github.com/basilisk867/monster-siren-sync/releases/latest/download/siren-sync.exe)** —— 无需安装 Node.js，双击即用。
+
 把 [塞壬唱片（Monster Siren）](https://monster-siren.hypergryph.com/music) 的音乐按专辑增量同步到本地：界面里逐张浏览、手动勾选下载，只拉本地没有的部分，并内置本地播放器与滚动歌词。
 
 - 零依赖：只用 Node.js 内置模块，无需 `npm install`
