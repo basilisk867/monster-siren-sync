@@ -1,0 +1,7 @@
+node_modules/
+config.json
+userdata/
+downloads/
+public-assets.mjs
+siren-sync.exe
+*.log
