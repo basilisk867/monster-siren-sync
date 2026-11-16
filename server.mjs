@@ -403,6 +403,12 @@ async function runTask(task) {
     broadcast('stats', statsView());
   } catch (e) {
     task.error = String(e?.message || e);
+    // 目录不可写（安全软件限制）重试也没用，直接失败并提示
+    if (e.code === 'EPERM' || e.code === 'EACCES') {
+      log(`目录不可写，任务失败: ${task.songName} — ${task.error}`);
+      failTask(task, e);
+      return;
+    }
     if (task.retries < MAX_RETRY) {
       task.retries++;
       task.status = 'queued';
@@ -427,7 +433,16 @@ async function ensureAlbumDir(album) {
   return withLock('album:' + album.cid, async () => {
     const dirName = sanitizeFilename(album.name, album.cid, 60);
     const albumDir = path.join(config.downloadDir, dirName);
-    await fsp.mkdir(albumDir, { recursive: true });
+    try {
+      await fsp.mkdir(albumDir, { recursive: true });
+    } catch (e) {
+      if (e.code === 'EPERM' || e.code === 'EACCES') {
+        throw new Error(
+          `无法创建专辑文件夹（可能被安全软件限制）：${config.downloadDir}。请在设置中更换下载目录，或把程序加入安全软件白名单`
+        );
+      }
+      throw e;
+    }
 
     let cover = await findCoverFile(albumDir);
     if (!cover) cover = await fetchCover(album, albumDir);
@@ -874,8 +889,25 @@ async function handler(req, res) {
       if (Number.isFinite(body.concurrency)) patch.concurrency = Math.min(5, Math.max(1, Math.round(body.concurrency)));
       if (typeof body.downloadMV === 'boolean') patch.downloadMV = body.downloadMV;
       if (Number.isFinite(body.port)) patch.port = Math.round(body.port);
-      await saveConfig(patch);
-      if (patch.downloadDir) await fsp.mkdir(config.downloadDir, { recursive: true }).catch(() => {});
+
+      // 保存前验证下载目录可写，避免存进被安全软件限制的目录
+      if (patch.downloadDir) {
+        try {
+          await fsp.mkdir(patch.downloadDir, { recursive: true });
+          const probe = path.join(patch.downloadDir, '.siren-write-test-' + Date.now());
+          await fsp.mkdir(probe, { recursive: true });
+          await fsp.rmdir(probe).catch(() => {});
+        } catch (e) {
+          if (e.code === 'EPERM' || e.code === 'EACCES') {
+            return sendJson(res, 400, {
+              error: '这个文件夹不可写（可能被安全软件限制）。请换一个目录，或把程序加入安全软件白名单后再试',
+            });
+          }
+          return sendJson(res, 400, { error: '无法访问该文件夹：' + String(e.message || e) });
+        }
+      }
+
+      await saveConfig(patch).catch((e) => log('保存配置文件失败:', e.message || e));
       if (patch.downloadDir) {
         await scanLocal();
         broadcast('stats', statsView());
